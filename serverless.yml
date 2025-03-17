@@ -1,0 +1,47 @@
+service: amazon-scraping
+frameworkVersion: '3'
+configValidationMode: error
+useDotenv: true
+
+plugins:
+  - serverless-esbuild
+  - serverless-dotenv-plugin
+  - serverless-offline
+
+package:
+  patterns:
+    - 'src/geo/*.sqlite'
+    - 'src/forms/**/*.pdf'
+
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  deploymentMethod: direct
+  region: us-east-1
+  environment:
+    AMAZON_EMAIL: ${env:AMAZON_EMAIL}
+    AMAZON_PASSWORD: ${env:AMAZON_PASSWORD}
+
+custom:
+  esbuild:
+    external:
+      - better-sqlite3
+      - spatialite
+      - 'chrome-aws-lambda'
+      - 'puppeteer-core'
+    bundle: true
+    minify: false
+#    watch:
+#      pattern: 'src/**/*.ts'
+
+
+functions:
+  getReport:
+    handler: src/scraper/seller/getReportDocument.handler
+    runtime: nodejs14.x
+    timeout: 900
+    events:
+      - httpApi:
+          path: /scraper/seller/getReport
+          method: POST

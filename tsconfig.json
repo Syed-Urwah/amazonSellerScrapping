@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "paths": {
+      "@schema": ["./data/schema.ts"],
+      "@": ["./"]
+    }
+  },
+  "include": [],
+  "exclude": ["node_modules"],
+  "types": ["node"],
+  "typeRoots": ["./types", "./node_modules/@types"]
+}

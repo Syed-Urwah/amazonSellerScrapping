@@ -1,0 +1,47 @@
+{
+  "name": "taxcreditwiz-serverless",
+  "version": "1.0.0",
+  "description": "Example of creating a function that runs as a cron job using the serverless `schedule` event",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "sls offline",
+    "scrape_florida": "sls invoke local --function scraper_florida",
+    "scraper_florida_update_client_connection": "sls invoke local --function scraper_florida_update_client_connection",
+    "build": "sls package",
+    "deploy": "sls deploy",
+    "db_introspect": "drizzle-kit introspect:pg"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.119",
+    "@types/node": "^20.10.5",
+    "@types/pg": "^8.11.0",
+    "drizzle-kit": "^0.20.14",
+    "esbuild": "^0.17.19",
+    "serverless": "^3.34.0",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-esbuild": "^1.46.0",
+    "serverless-offline": "13.3.2"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.523.0",
+    "@mapbox/mapbox-sdk": "^0.15.3",
+    "@sparticuz/chromium": "^110.0.1",
+    "axios": "^1.6.7",
+    "better-sqlite3": "^8.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "chrome-aws-lambda": "^6.0.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.29.3",
+    "handlebars": "^4.7.8",
+    "nodemailer": "^6.9.14",
+    "otplib": "^12.0.1",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.11.3",
+    "proxy-chain": "^2.5.3",
+    "puppeteer-core": "^6.0.0",
+    "spatialite": "^0.1.0",
+    "typescript": "^5.3.3"
+  }
+}
