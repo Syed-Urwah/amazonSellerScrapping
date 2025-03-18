@@ -9,9 +9,14 @@ const { authenticator } = require('otplib');
 const chromium = require('chrome-aws-lambda');
 import puppeteer from "puppeteer-core";
 import path from "path";
+import { createSuccessResponse } from "../../../utils/responses";
+const csvParser = require('csv-parser');
+const fs = require('fs');
+
 
 const tempDir = path.join(__dirname, 'temp');
 const chromePath = path.join(process.cwd(), 'chrome/win64-129.0.6668.100/chrome-win64/chrome.exe');
+const downloadPath = path.resolve(__dirname, 'downloads'); // Change to your preferred download directory
 
 
 
@@ -28,8 +33,9 @@ const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => 
     //     await login(process.env.FLORIDA_USERID!, process.env.FLORIDA_PASSWORD!, token)
     // }
 
-    await createFloridaConnection(account_name, location_name);
-    // return getCookies();
+    const data = await createFloridaConnection(account_name, location_name);
+    console.log(data[0])
+    return createSuccessResponse(200, "success", data)
 };
 
 
@@ -139,7 +145,7 @@ async function createFloridaConnection(accountName, locationName) {
                 await page.waitForSelector('kat-date-picker[name="startDate"]');
                 await page.click('kat-date-picker[name="startDate"]'); // Open date picker
                 await page.waitForSelector('input[name="startDate"]');
-                await page.type('input[name="startDate"]', '03/01/2025', { delay: 100 });
+                await page.type('input[name="startDate"]', '03/14/2025', { delay: 100 });
 
                 // await page.keyboard.type('12/31/2025'); // Type date
                 await page.keyboard.press('Enter'); // Confirm
@@ -159,6 +165,14 @@ async function createFloridaConnection(accountName, locationName) {
                 });
 
                 let downloadClicked = false;
+                let filesBefore: any = []
+
+                // Set download behavior
+                const client = await page.target().createCDPSession();
+                await client.send('Page.setDownloadBehavior', {
+                    behavior: 'allow',
+                    downloadPath: downloadPath, // Set custom download path
+                });
 
                 while (!downloadClicked) {
                     // Click the Refresh button inside the first row
@@ -175,6 +189,14 @@ async function createFloridaConnection(accountName, locationName) {
 
                     // Wait a few seconds before checking again
                     await page.waitForTimeout(5000); // Adjust time as needed
+
+                    // Get the list of files in the download directory BEFORE downloading
+                    // Ensure the directory exists before scanning it
+                    if (!fs.existsSync(downloadPath)) {
+                        fs.mkdirSync(downloadPath, { recursive: true });
+                    }
+                    await deleteAllFiles(downloadPath)
+                    filesBefore = new Set(fs.readdirSync(downloadPath));
 
                     // Check if the Download CSV button is available
                     const downloadButton = await page.$(
@@ -193,8 +215,58 @@ async function createFloridaConnection(accountName, locationName) {
                 console.log('Download process completed.');
 
                 // Optional: Wait for some time before closing
-                await page.waitForTimeout(5000);
+                // Wait for the file to be downloaded
+                await page.waitForTimeout(10000); // Adjust if needed
 
+                // Get the list of files in the download directory AFTER downloading
+                const filesAfter = new Set(fs.readdirSync(downloadPath));
+
+                // Find the new file
+                const newFiles = [...filesAfter].filter(file => !filesBefore.has(file));
+
+                if (newFiles.length === 0) {
+                    console.error('No new file detected.');
+                    await browser.close();
+                    return;
+                }
+
+                // Assuming the first detected new file is the correct one
+                const csvFile: any = newFiles[0];
+                const csvFilePath = path.join(downloadPath, csvFile);
+
+                console.log(`Downloaded file detected: ${csvFile}`);
+
+                // Process the CSV file
+                // let jsonData: any = [];
+                let rowIndex = 0;
+                let headers: any = [];
+
+                const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
+
+
+                // fs.createReadStream(csvFilePath)
+                //     .pipe(csvParser())
+                //     .on('data', (row: any) => {
+                //         rowIndex++;
+                //         if (rowIndex === 8) {
+                //             // Store the header row
+                //             headers = Object.keys(row);
+                //           } else if (rowIndex > 8) {
+                //             // Extract only the required data rows
+                //             const formattedRow = {};
+                //             headers.forEach((header, index) => {
+                //               formattedRow[header] = Object.values(row)[index];
+                //             });
+                //             jsonData.push(formattedRow);
+                //           }
+                //         })
+                //     .on('end', () => {
+                //         console.log('Extracted JSON Data:', JSON.stringify(jsonData[0], null, 2));
+                //         return createSuccessResponse(200, "success", jsonData)
+                //     });
+
+                return jsonData
+                
 
                 // Function to wait for the first row's status to become "Ready"
                 // await page.waitForFunction(() => {
@@ -330,6 +402,72 @@ async function selectAccount(accountName, locationName, page) {
         return false;
     }
 }
+
+function deleteAllFiles(directory) {
+    if (!fs.existsSync(directory)) {
+        console.log("Download folder does not exist.");
+        return;
+    }
+
+    fs.readdir(directory, (err, files) => {
+        if (err) {
+            console.error("Error reading directory:", err);
+            return;
+        }
+
+        files.forEach(file => {
+            const filePath = path.join(directory, file);
+            fs.unlink(filePath, err => {
+                if (err) {
+                    console.error(`Error deleting file ${file}:`, err);
+                } else {
+                    console.log(`Deleted: ${file}`);
+                }
+            });
+        });
+    });
+}
+
+async function parseCSVWithOffsetHeaders(filePath, headerRowIndex = 8, dataStartRowIndex = 9) {
+    // Create a readable stream from the CSV file
+    const fileStream = fs.createReadStream(filePath);
+    
+    // Store all rows from the CSV
+    const allRows: any = [];
+    
+    // Parse the CSV file to get all rows
+    await new Promise((resolve, reject) => {
+      fileStream
+        .pipe(csvParser({ headers: false })) // Don't use the first row as headers
+        .on('data', (row: any) => {
+          allRows.push(Object.values(row));
+        })
+        .on('end', resolve)
+        .on('error', reject);
+    });
+    
+    // Extract headers from the specified row
+    const headers: any = allRows[headerRowIndex - 1];
+    
+    // Process data rows and create JSON objects
+    const jsonData: any = [];
+    for (let i = dataStartRowIndex - 1; i < allRows.length; i++) {
+      const row: any = allRows[i];
+      
+      // Create an object using headers as keys
+      const entry: any = {};
+      headers.forEach((header, index) => {
+        // Make sure not to exceed the row length
+        if (index < row.length) {
+          entry[header.trim()] = row[index].trim();
+        }
+      });
+      
+      jsonData.push(entry);
+    }
+    
+    return jsonData;
+  }
 
 function getCurrentDate() {
     const currentDate = new Date();
