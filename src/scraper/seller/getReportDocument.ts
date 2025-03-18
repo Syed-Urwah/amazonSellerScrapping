@@ -25,21 +25,15 @@ const password = "alphabet"
 
 
 const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
-    const { account_name, location_name } = JSON.parse(event.body || '');
+    const { account_name, location_name, start_date, end_date } = JSON.parse(event.body || '');
 
-    // startupCheck();
-    // const token = await getVerificationToken()
-    // if (token) {
-    //     await login(process.env.FLORIDA_USERID!, process.env.FLORIDA_PASSWORD!, token)
-    // }
-
-    const data = await createFloridaConnection(account_name, location_name);
+    const data = await getReportDocument(account_name, location_name, start_date, end_date);
     console.log(data[0])
     return createSuccessResponse(200, "success", data)
 };
 
 
-async function createFloridaConnection(accountName, locationName) {
+async function getReportDocument(accountName, locationName, startDate, endDate) {
     try {
 
 
@@ -83,41 +77,11 @@ async function createFloridaConnection(accountName, locationName) {
             const page: any = await browser.newPage();
 
 
-            console.log("login start")
-            // Navigate the page to a URL
-            // await page.goto('https://wotc.floridajobs.org/',  { waitUntil: 'networkidle2', timeout: 30000 } );
-            // // // Type into login form
-
-
-            // await Promise.all([
-            //     page.waitForNavigation(), // The promise resolves after navigation has finished
-            //     page.click('.btn1') // Clicking the link will indirectly cause a navigation
-            // ]);
-            // await login(process.env.FLORIDA_USERID!.toString(), process.env.FLORIDA_PASSWORD!.toString(), page)
-            // console.log("login success")
 
             await page.goto('https://sellercentral.amazon.com/payments/reports-repository/ref=xx_rrepo_dnav_xx'); 4
-
+            console.log("login start")
             //login
             await login(email, password, page)
-            // await page.type('#ap_email', email);
-            // await Promise.all([
-            //     page.waitForNavigation(), // The promise resolves after navigation has finished
-            //     page.click('#continue') // Clicking the link will indirectly cause a navigation
-            // ]);
-
-            // await page.type('#ap_password', password);
-            // await Promise.all([
-            //     page.waitForNavigation(), // The promise resolves after navigation has finished
-            //     page.click('#signInSubmit') // Clicking the link will indirectly cause a navigation
-            // ]);
-
-            // await page.type('#auth-mfa-otpcode', token);
-            // await Promise.all([
-            //     page.waitForNavigation(), // The promise resolves after navigation has finished
-            //     page.click('#auth-signin-button') // Clicking the link will indirectly cause a navigation
-            // ]);
-
 
             //select account
             const accountSelected = await selectAccount(accountName, locationName, page)
@@ -140,200 +104,15 @@ async function createFloridaConnection(accountName, locationName) {
                 }
 
                 //Creating Report
-                // Wait for the input field and type the date
-                //startDate
-                await page.waitForSelector('kat-date-picker[name="startDate"]');
-                await page.click('kat-date-picker[name="startDate"]'); // Open date picker
-                await page.waitForSelector('input[name="startDate"]');
-                await page.type('input[name="startDate"]', '03/14/2025', { delay: 100 });
-
-                // await page.keyboard.type('12/31/2025'); // Type date
-                await page.keyboard.press('Enter'); // Confirm
-
-                //endDate
-                await page.waitForSelector('kat-date-picker[name="endDate"]');
-                await page.click('kat-date-picker[name="endDate"]'); // Open date picker
-                await page.waitForSelector('input[name="endDate"]');
-                await page.type('input[name="endDate"]', '03/17/2025', { delay: 100 });
-                await page.keyboard.press('Enter'); // Confirm
-
-
-                //click Request Report
-                await page.evaluate(() => {
-                    const btn: any = document.getElementById('filter-generate-button');
-                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                });
-
-                let downloadClicked = false;
-                let filesBefore: any = []
-
-                // Set download behavior
-                const client = await page.target().createCDPSession();
-                await client.send('Page.setDownloadBehavior', {
-                    behavior: 'allow',
-                    downloadPath: downloadPath, // Set custom download path
-                });
-
-                while (!downloadClicked) {
-                    // Click the Refresh button inside the first row
-                    const refreshButton = await page.$(
-                        "kat-table-body kat-table-row:first-child kat-button[label='Refresh']"
-                    );
-
-                    if (refreshButton) {
-                        console.log('Clicking Refresh...');
-                        await refreshButton.click();
-                    } else {
-                        console.log('Refresh button not found, waiting...');
-                    }
-
-                    // Wait a few seconds before checking again
-                    await page.waitForTimeout(5000); // Adjust time as needed
-
-                    // Get the list of files in the download directory BEFORE downloading
-                    // Ensure the directory exists before scanning it
-                    if (!fs.existsSync(downloadPath)) {
-                        fs.mkdirSync(downloadPath, { recursive: true });
-                    }
-                    await deleteAllFiles(downloadPath)
-                    filesBefore = new Set(fs.readdirSync(downloadPath));
-
-                    // Check if the Download CSV button is available
-                    const downloadButton = await page.$(
-                        "kat-table-body kat-table-row:first-child kat-button[label='Download CSV']"
-                    );
-
-                    if (downloadButton) {
-                        console.log('Download CSV button found, clicking...');
-                        await downloadButton.click();
-                        downloadClicked = true; // Stop loop after clicking
-                    } else {
-                        console.log('Download CSV button not found, refreshing again...');
-                    }
-                }
-
-                console.log('Download process completed.');
-
-                // Optional: Wait for some time before closing
-                // Wait for the file to be downloaded
-                await page.waitForTimeout(10000); // Adjust if needed
-
-                // Get the list of files in the download directory AFTER downloading
-                const filesAfter = new Set(fs.readdirSync(downloadPath));
-
-                // Find the new file
-                const newFiles = [...filesAfter].filter(file => !filesBefore.has(file));
-
-                if (newFiles.length === 0) {
-                    console.error('No new file detected.');
-                    await browser.close();
-                    return;
-                }
-
-                // Assuming the first detected new file is the correct one
-                const csvFile: any = newFiles[0];
-                const csvFilePath = path.join(downloadPath, csvFile);
-
-                console.log(`Downloaded file detected: ${csvFile}`);
-
-                // Process the CSV file
-                // let jsonData: any = [];
-                let rowIndex = 0;
-                let headers: any = [];
+                await createReport(page, startDate, endDate)
+               
+                const csvFilePath = await downloadReport(page, browser)
 
                 const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
-
-
-                // fs.createReadStream(csvFilePath)
-                //     .pipe(csvParser())
-                //     .on('data', (row: any) => {
-                //         rowIndex++;
-                //         if (rowIndex === 8) {
-                //             // Store the header row
-                //             headers = Object.keys(row);
-                //           } else if (rowIndex > 8) {
-                //             // Extract only the required data rows
-                //             const formattedRow = {};
-                //             headers.forEach((header, index) => {
-                //               formattedRow[header] = Object.values(row)[index];
-                //             });
-                //             jsonData.push(formattedRow);
-                //           }
-                //         })
-                //     .on('end', () => {
-                //         console.log('Extracted JSON Data:', JSON.stringify(jsonData[0], null, 2));
-                //         return createSuccessResponse(200, "success", jsonData)
-                //     });
-
+               
                 return jsonData
-                
-
-                // Function to wait for the first row's status to become "Ready"
-                // await page.waitForFunction(() => {
-                //     const firstRowStatus = document.querySelector(
-                //         "kat-table-body kat-table-row:first-child kat-statusindicator"
-                //     );
-                //     return firstRowStatus && firstRowStatus.getAttribute("label") === "Ready";
-                // }, { timeout: 0 }); // No timeout, it waits indefinitely
-
-                // console.log('Status is Ready. Clicking Download CSV...');
-
-                // // Click the Download button in the first row
-                // await page.evaluate(() => {
-                //     const downloadButton: any = document.querySelector(
-                //         "kat-table-body kat-table-row:first-child kat-button[label='Download CSV']"
-                //     );
-                //     if (downloadButton) {
-                //         downloadButton.click();
-                //     }
-                // });
-
-                // console.log('Download CSV button clicked.');
-
-                // // Optional: Wait some time for the download to start
-                // await page.waitForTimeout(5000);
-
-
-                // const xpathStartDate = `//kat-input[@name='startDate']`;
-                // await page.waitForXPath(xpathStartDate, { timeout: 10000 }); // Waits up to 10 seconds
-                // const [katElement] = await page.$x(xpathStartDate);
-
-                // if (katElement) {
-                //     await katElement.click();
-                // }
-
-                // await page.waitForSelector('input[name="startDate"]');
-                // await page.type('input[name="startDate"]', '01/01/2025', { delay: 100 });
-
-                // await page.waitForSelector('input[name="endDate"]');
-                // await page.type('input[name="startDate"]', '12/31/2025', { delay: 100 });
-
             }
             console.log(accountSelected)
-
-
-
-
-            // // Clear all input fields
-            // await page.evaluate(() => {
-            //     const inputs = document.querySelectorAll('input');
-            //     inputs.forEach(input => input.value = '');
-            // });
-
-
-
-
-
-
-
-
-
-
-            // await page.screenshot({
-            //     path: '/tmp/hn.png',
-            // });
-
-            // fs.unlinkSync(pdfFilePath); // Deletes the file after uploading
 
             // console.log("browser closing")
             // await browser.close();
@@ -431,43 +210,151 @@ function deleteAllFiles(directory) {
 async function parseCSVWithOffsetHeaders(filePath, headerRowIndex = 8, dataStartRowIndex = 9) {
     // Create a readable stream from the CSV file
     const fileStream = fs.createReadStream(filePath);
-    
+
     // Store all rows from the CSV
     const allRows: any = [];
-    
+
     // Parse the CSV file to get all rows
     await new Promise((resolve, reject) => {
-      fileStream
-        .pipe(csvParser({ headers: false })) // Don't use the first row as headers
-        .on('data', (row: any) => {
-          allRows.push(Object.values(row));
-        })
-        .on('end', resolve)
-        .on('error', reject);
+        fileStream
+            .pipe(csvParser({ headers: false })) // Don't use the first row as headers
+            .on('data', (row: any) => {
+                allRows.push(Object.values(row));
+            })
+            .on('end', resolve)
+            .on('error', reject);
     });
-    
+
     // Extract headers from the specified row
     const headers: any = allRows[headerRowIndex - 1];
-    
+
     // Process data rows and create JSON objects
     const jsonData: any = [];
     for (let i = dataStartRowIndex - 1; i < allRows.length; i++) {
-      const row: any = allRows[i];
-      
-      // Create an object using headers as keys
-      const entry: any = {};
-      headers.forEach((header, index) => {
-        // Make sure not to exceed the row length
-        if (index < row.length) {
-          entry[header.trim()] = row[index].trim();
-        }
-      });
-      
-      jsonData.push(entry);
+        const row: any = allRows[i];
+
+        // Create an object using headers as keys
+        const entry: any = {};
+        headers.forEach((header, index) => {
+            // Make sure not to exceed the row length
+            if (index < row.length) {
+                entry[header.trim()] = row[index].trim();
+            }
+        });
+
+        jsonData.push(entry);
     }
-    
+
     return jsonData;
-  }
+}
+
+async function createReport(page, startDate, endDate) {
+    // Wait for the input field and type the date
+    //startDate
+    await page.waitForSelector('kat-date-picker[name="startDate"]');
+    await page.click('kat-date-picker[name="startDate"]'); // Open date picker
+    await page.waitForSelector('input[name="startDate"]');
+    await page.type('input[name="startDate"]', startDate, { delay: 100 });
+
+    // await page.keyboard.type('12/31/2025'); // Type date
+    await page.keyboard.press('Enter'); // Confirm
+
+    //endDate
+    await page.waitForSelector('kat-date-picker[name="endDate"]');
+    await page.click('kat-date-picker[name="endDate"]'); // Open date picker
+    await page.waitForSelector('input[name="endDate"]');
+    await page.type('input[name="endDate"]', endDate, { delay: 100 });
+    await page.keyboard.press('Enter'); // Confirm
+
+
+    //click Request Report
+    await page.evaluate(() => {
+        const btn: any = document.getElementById('filter-generate-button');
+        btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    });
+}
+
+async function downloadReport(page,browser) {
+    let downloadClicked = false;
+    let filesBefore: any = []
+
+    // Set download behavior
+    const client = await page.target().createCDPSession();
+    await client.send('Page.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: downloadPath, // Set custom download path
+    });
+
+    while (!downloadClicked) {
+        // Click the Refresh button inside the first row
+        const refreshButton = await page.$(
+            "kat-table-body kat-table-row:first-child kat-button[label='Refresh']"
+        );
+
+        if (refreshButton) {
+            console.log('Clicking Refresh...');
+            await refreshButton.click();
+        } else {
+            console.log('Refresh button not found, waiting...');
+        }
+
+        // Wait a few seconds before checking again
+        await page.waitForTimeout(5000); // Adjust time as needed
+
+        // Get the list of files in the download directory BEFORE downloading
+        // Ensure the directory exists before scanning it
+        if (!fs.existsSync(downloadPath)) {
+            fs.mkdirSync(downloadPath, { recursive: true });
+        }
+        await deleteAllFiles(downloadPath)
+        filesBefore = new Set(fs.readdirSync(downloadPath));
+
+        // Check if the Download CSV button is available
+        const downloadButton = await page.$(
+            "kat-table-body kat-table-row:first-child kat-button[label='Download CSV']"
+        );
+
+        if (downloadButton) {
+            console.log('Download CSV button found, clicking...');
+            await downloadButton.click();
+            downloadClicked = true; // Stop loop after clicking
+        } else {
+            console.log('Download CSV button not found, refreshing again...');
+        }
+    }
+
+    console.log('Download process completed.');
+
+    // Optional: Wait for some time before closing
+    // Wait for the file to be downloaded
+    await page.waitForTimeout(10000); // Adjust if needed
+
+    // Get the list of files in the download directory AFTER downloading
+    const filesAfter = new Set(fs.readdirSync(downloadPath));
+
+    // Find the new file
+    const newFiles = [...filesAfter].filter(file => !filesBefore.has(file));
+
+    if (newFiles.length === 0) {
+        console.error('No new file detected.');
+        await browser.close();
+        return;
+    }
+
+    // Assuming the first detected new file is the correct one
+    const csvFile: any = newFiles[0];
+    const csvFilePath = path.join(downloadPath, csvFile);
+
+    console.log(`Downloaded file detected: ${csvFile}`);
+
+    // Process the CSV file
+    // let jsonData: any = [];
+    let rowIndex = 0;
+    let headers: any = [];
+
+    // const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
+    return csvFilePath;
+}
 
 function getCurrentDate() {
     const currentDate = new Date();
