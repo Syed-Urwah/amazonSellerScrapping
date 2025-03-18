@@ -3,10 +3,7 @@ import {
     Handler
 } from "aws-lambda";
 import axios from "axios";
-import { db } from "../../../data/db";
-import { Form9198, entities } from "../../../data/schema";
 import { and, eq } from "drizzle-orm";
-import { poa_state_connection } from "../../../data/schema/schema";
 import { login } from './login'
 const { authenticator } = require('otplib');
 const chromium = require('chrome-aws-lambda');
@@ -136,6 +133,108 @@ async function createFloridaConnection(accountName, locationName) {
                     console.log("Skip button not found");
                 }
 
+                //Creating Report
+                // Wait for the input field and type the date
+                //startDate
+                await page.waitForSelector('kat-date-picker[name="startDate"]');
+                await page.click('kat-date-picker[name="startDate"]'); // Open date picker
+                await page.waitForSelector('input[name="startDate"]');
+                await page.type('input[name="startDate"]', '03/01/2025', { delay: 100 });
+
+                // await page.keyboard.type('12/31/2025'); // Type date
+                await page.keyboard.press('Enter'); // Confirm
+
+                //endDate
+                await page.waitForSelector('kat-date-picker[name="endDate"]');
+                await page.click('kat-date-picker[name="endDate"]'); // Open date picker
+                await page.waitForSelector('input[name="endDate"]');
+                await page.type('input[name="endDate"]', '03/17/2025', { delay: 100 });
+                await page.keyboard.press('Enter'); // Confirm
+
+
+                //click Request Report
+                await page.evaluate(() => {
+                    const btn: any = document.getElementById('filter-generate-button');
+                    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                });
+
+                let downloadClicked = false;
+
+                while (!downloadClicked) {
+                    // Click the Refresh button inside the first row
+                    const refreshButton = await page.$(
+                        "kat-table-body kat-table-row:first-child kat-button[label='Refresh']"
+                    );
+
+                    if (refreshButton) {
+                        console.log('Clicking Refresh...');
+                        await refreshButton.click();
+                    } else {
+                        console.log('Refresh button not found, waiting...');
+                    }
+
+                    // Wait a few seconds before checking again
+                    await page.waitForTimeout(5000); // Adjust time as needed
+
+                    // Check if the Download CSV button is available
+                    const downloadButton = await page.$(
+                        "kat-table-body kat-table-row:first-child kat-button[label='Download CSV']"
+                    );
+
+                    if (downloadButton) {
+                        console.log('Download CSV button found, clicking...');
+                        await downloadButton.click();
+                        downloadClicked = true; // Stop loop after clicking
+                    } else {
+                        console.log('Download CSV button not found, refreshing again...');
+                    }
+                }
+
+                console.log('Download process completed.');
+
+                // Optional: Wait for some time before closing
+                await page.waitForTimeout(5000);
+
+
+                // Function to wait for the first row's status to become "Ready"
+                // await page.waitForFunction(() => {
+                //     const firstRowStatus = document.querySelector(
+                //         "kat-table-body kat-table-row:first-child kat-statusindicator"
+                //     );
+                //     return firstRowStatus && firstRowStatus.getAttribute("label") === "Ready";
+                // }, { timeout: 0 }); // No timeout, it waits indefinitely
+
+                // console.log('Status is Ready. Clicking Download CSV...');
+
+                // // Click the Download button in the first row
+                // await page.evaluate(() => {
+                //     const downloadButton: any = document.querySelector(
+                //         "kat-table-body kat-table-row:first-child kat-button[label='Download CSV']"
+                //     );
+                //     if (downloadButton) {
+                //         downloadButton.click();
+                //     }
+                // });
+
+                // console.log('Download CSV button clicked.');
+
+                // // Optional: Wait some time for the download to start
+                // await page.waitForTimeout(5000);
+
+
+                // const xpathStartDate = `//kat-input[@name='startDate']`;
+                // await page.waitForXPath(xpathStartDate, { timeout: 10000 }); // Waits up to 10 seconds
+                // const [katElement] = await page.$x(xpathStartDate);
+
+                // if (katElement) {
+                //     await katElement.click();
+                // }
+
+                // await page.waitForSelector('input[name="startDate"]');
+                // await page.type('input[name="startDate"]', '01/01/2025', { delay: 100 });
+
+                // await page.waitForSelector('input[name="endDate"]');
+                // await page.type('input[name="startDate"]', '12/31/2025', { delay: 100 });
 
             }
             console.log(accountSelected)

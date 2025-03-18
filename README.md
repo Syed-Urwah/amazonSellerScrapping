@@ -1,4 +1,4 @@
-# TaxCreditWiz Serverless Functions
+# AmazonSellerScraping Serverless Functions
 
 This uses the [Serverless](https://github.com/serverless/serverless) project to manage
 configuration and deployment of functions. [Documentation](https://www.serverless.com/framework/docs)
@@ -12,12 +12,7 @@ Run `npm i`
 
 Set required environment variables
 ```bash
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-DB_URL
-FLORIDA_USERID
-FLORIDA_PASSWORD
-AWS_FORMS_BUCKET_BASE_URL
+TODO
 ```
 
 ### Running functions locally
@@ -29,8 +24,7 @@ For functions that access AWS, you'll need to login via `aws sso login`
 - Functions can be grouped inside directories in `src` dir
 
 ## Deployment
-CI/CD is handled by a [bitbucket pipeline](https://bitbucket.org/amamanagementinc/taxcreditwiz-serverless/pipelines/results/page/1)
-and runs on every push.
+TODO
 
 ### Adding a new environment variable
 1. Add variable to .env file
