@@ -27,13 +27,13 @@ const password = "alphabet"
 const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
     const { account_name, location_name, start_date, end_date } = JSON.parse(event.body || '');
 
-    const data = await getReportDocument(account_name, location_name, start_date, end_date);
+    const data = await getSupportCases(account_name, location_name, start_date, end_date);
     console.log(data[0])
     return createSuccessResponse(200, "success", data)
 };
 
 
-async function getReportDocument(accountName, locationName, startDate, endDate) {
+async function getSupportCases(accountName, locationName, startDate, endDate) {
     try {
 
 
@@ -78,7 +78,7 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
 
 
 
-            await page.goto('https://sellercentral.amazon.com/payments/reports-repository/ref=xx_rrepo_dnav_xx'); 4
+            await page.goto('https://sellercentral.amazon.com/cu/case-lobby?ref_=xx_case_dnav_xx');
             console.log("login start")
             //login
             await login(email, password, page)
@@ -89,28 +89,52 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
             if (accountSelected) {
 
                 //handleSkip
-                const skipButtonXPath = `//button[@data-test-id='button-skip' and @data-action='skip']`;
-                // Wait for the button to appear (max 10 seconds)
-                await page.waitForXPath(skipButtonXPath, { timeout: 10000 });
+                // const skipButtonXPath = `//button[@data-test-id='button-skip' and @data-action='skip']`;
+                // // Wait for the button to appear (max 10 seconds)
+                // await page.waitForXPath(skipButtonXPath, { timeout: 10000 });
 
-                // Select the button
-                const [skipButton] = await page.$x(skipButtonXPath);
+                // // Select the button
+                // const [skipButton] = await page.$x(skipButtonXPath);
 
-                if (skipButton) {
-                    await skipButton.click();
-                    console.log("Clicked on 'Skip' button");
-                } else {
-                    console.log("Skip button not found");
-                }
+                // if (skipButton) {
+                //     await skipButton.click();
+                //     console.log("Clicked on 'Skip' button");
+                // } else {
+                //     console.log("Skip button not found");
+                // }
 
                 //Creating Report
-                await createReport(page, startDate, endDate)
-               
-                const csvFilePath = await downloadReport(page, browser)
+                // await createReport(page, startDate, endDate)
+                // Wait for the table to load
+                await page.waitForSelector('kat-data-table table');
 
-                const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
-               
-                return jsonData
+                // Extract table data
+                const tableData = await page.evaluate(() => {
+                    const rows = document.querySelectorAll('kat-data-table table tbody tr');
+                    const data: any = [];
+
+                    rows.forEach(row => {
+                        const cells: any = row.querySelectorAll('td');
+                        const rowData: any = {
+                            creationDate: cells[0].innerText.trim(),
+                            caseId: cells[1].innerText.trim(),
+                            status: cells[2].innerText.trim(),
+                            primaryEmail: cells[3].innerText.trim(),
+                            shortDescription: cells[4].innerText.trim(),
+                            viewCaseLink: cells[5].querySelector('a').href
+                        };
+                        data.push(rowData);
+                    });
+
+                    return data;
+                });
+
+                return tableData
+                // const csvFilePath = await downloadReport(page, browser)
+
+                // const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
+
+                // return jsonData
             }
             console.log(accountSelected)
 
@@ -274,7 +298,7 @@ async function createReport(page, startDate, endDate) {
     });
 }
 
-async function downloadReport(page,browser) {
+async function downloadReport(page, browser) {
     let downloadClicked = false;
     let filesBefore: any = []
 

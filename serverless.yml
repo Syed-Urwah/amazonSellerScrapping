@@ -45,3 +45,11 @@ functions:
       - httpApi:
           path: /scraper/seller/getReport
           method: POST
+  getSupportCases:
+    handler: src/scraper/seller/getSupportCases.handler
+    runtime: nodejs14.x
+    timeout: 900
+    events:
+      - httpApi:
+          path: /scraper/seller/getSupportCases
+          method: POST
