@@ -12,6 +12,10 @@ import path from "path";
 import { createSuccessResponse } from "../../../utils/responses";
 const csvParser = require('csv-parser');
 const fs = require('fs');
+import { parse, isAfter, formatISO, format, isEqual } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+
+
 
 
 const tempDir = path.join(__dirname, 'temp');
@@ -28,7 +32,7 @@ const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => 
     const { account_name, location_name, start_date, end_date } = JSON.parse(event.body || '');
 
     const data = await getSupportCases(account_name, location_name, start_date, end_date);
-    console.log(data[0])
+    console.log(data[data.length - 1])
     return createSuccessResponse(200, "success", data)
 };
 
@@ -71,7 +75,7 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                 executablePath: chromePath,
                 userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
                 // args:[`--proxy-server=${newProxyUrl}`],
-                slowMo: 100
+                slowMo: 10
             });
             const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
             const page: any = await browser.newPage();
@@ -108,34 +112,163 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                 // Wait for the table to load
                 await page.waitForSelector('kat-data-table table');
 
-                // Extract table data
-                const tableData = await page.evaluate((startDate) => {
-                    const rows = document.querySelectorAll('kat-data-table table tbody tr');
-                    const data: any = [];
+                const data: any = [];
+                let shouldContinue = true;
+                let currentPage = 1;
 
-                    for (const row of rows) {
-                        const cells: any = row.querySelectorAll('td');
-                        const creationDate = new Date(cells[0].innerText.trim());
-                
-                        if (creationDate < new Date(startDate)) {
+                // Extract table data
+                while (shouldContinue) {
+                    // Extract data from the page
+                    const pageData = await page.evaluate(() => {
+                        const rows = document.querySelectorAll('kat-data-table table tbody tr');
+                        const extractedData: any = [];
+
+                        for (const row of rows) {
+                            const cells: any = row.querySelectorAll('td');
+                            const creationDateText = cells[0].innerText.trim();
+                            const creationDate = new Date(creationDateText);
+
+                            extractedData.push({
+                                creationDate: creationDateText,
+                                caseId: cells[1].innerText.trim(),
+                                status: cells[2].innerText.trim(),
+                                primaryEmail: cells[3].innerText.trim(),
+                                shortDescription: cells[4].innerText.trim(),
+                                viewCaseLink: cells[5].querySelector('a')?.href || null,
+                            });
+                        }
+
+                        return extractedData;
+                    });
+
+                    console.log(pageData)
+
+
+                    // Check if we should stop pagination
+                    for (const row of pageData) {
+                        // Parse the given date string explicitly
+                        // let creationDateParsed: any = new Date(row.creationDate)
+                        // // const adjustedDate = new Date(Date.UTC(2025, 2, 22, 19, 0, 0));
+                        // creationDateParsed.setUTCHours(19, 0, 0, 0);
+                        // creationDateParsed = creationDateParsed.toISOString()
+
+                        const creationDateParsed = parseCustomDate(row.creationDate);
+
+
+                        let startDateParsed = parse(startDate, "MM/dd/yyyy", new Date());
+                        console.log({
+                            startDateParsed,
+                            creationDateParsed
+                        })
+                        // Compare using date-fns isAfter function
+                        console.log(isAfter(creationDateParsed, startDateParsed));
+                        if (!isAfter(creationDateParsed, startDateParsed) || isEqual(creationDateParsed, startDateParsed)) {
+                            shouldContinue = false;
                             break;
                         }
-                
-                        const rowData: any = {
-                            creationDate: cells[0].innerText.trim(),
-                            caseId: cells[1].innerText.trim(),
-                            status: cells[2].innerText.trim(),
-                            primaryEmail: cells[3].innerText.trim(),
-                            shortDescription: cells[4].innerText.trim(),
-                            viewCaseLink: cells[5].querySelector('a').href
-                        };
-                
-                        data.push(rowData);
-                    }
-                    return data;
-                }, startDate);
+                        if (row.viewCaseLink) {
+                            const casePage = await page.browser().newPage(); // Open a new tab
 
-                return tableData
+                            await casePage.goto(row.viewCaseLink, { waitUntil: "domcontentloaded" });
+                            let caseContent;
+                            try {
+                                await casePage.waitForSelector("kat-expander.contact-expander", { timeout: 5000 });
+                                caseContent = await casePage.evaluate(() => {
+                                    const expander: any = document.querySelector("kat-expander.contact-expander");
+                                    return expander ? expander.innerText.trim() : "No details found";
+                                });
+                            } catch (error) {
+                                // If `kat-expander` is not found, check for `div.button-hmd`
+                                try {
+                                    await casePage.waitForSelector("div.button-hmd", { timeout: 5000 });
+                                    caseContent = await casePage.evaluate(() => {
+                                        const buttonDiv: any = document.querySelector("div.button-hmd");
+                                        return buttonDiv ? buttonDiv.innerText.trim() : "No details found";
+                                    });
+                                } catch (error) {
+                                    caseContent = "No details found";
+                                }
+                            }
+
+                            row.caseContent = caseContent; // Store extracted content
+                            await casePage.close(); // Close the new tab
+                        }
+
+
+                        data.push(row);
+                    }
+
+                    if (shouldContinue) {
+                        currentPage++; // Move to the next page
+
+                        // const paginationKatInput = await page.$$('kat-input[type="number"]')
+                        // paginationKatInput[0].click()
+
+                        // if (paginationKatInput.length > 0) {
+                        //     await page.evaluate((katInput, newValue) => {
+                        //         const input = katInput.shadowRoot?.querySelector('input'); // Get internal <input>
+                        //         if (input) {
+                        //             input.value = newValue; // Set new value
+                        //             input.dispatchEvent(new Event("input", { bubbles: true })); // Trigger change event
+                        //         }
+                        //     }, paginationKatInput[0], currentPage); // Change value to "5"
+                        // } else {
+                        //     console.error("❌ kat-input not found!");
+                        // }
+
+                        // const paginationInput = await page.waitForSelector('input[type="number"]');
+                        // await paginationInput.type(currentPage, {delay: 100})
+
+
+
+                        // Wait for the kat-input element with the specific unique-id
+                        // const inputHandles = await page.evaluateHandle(() => {
+                        //     const katInputs = document.querySelectorAll("kat-input[type='number']");
+                        //     return [
+                        //         katInputs[0]?.shadowRoot?.querySelector("input") || null, // First input
+                        //         katInputs[1]?.shadowRoot?.querySelector("input") || null  // Second input
+                        //     ];
+                        // });
+
+                        // // Select the correct input handle (0 for first, 1 for second)
+                        // const inputHandle = (await inputHandles.getProperties()).get(0); // Change to 0 for first
+
+                        // if (inputHandle) {
+                        //     await inputHandle.type(currentPage, { delay: 100 });
+                        // } else {
+                        //     console.error("❌ Input field not found inside kat-input!");
+                        // }                 
+                        // await page.type("#katal-id-7", currentPage.toString(), { delay: 100 });
+
+                        // Click the "Go" button
+                        // const button = await page.$x("//kat-button[@label='Go']");
+                        // if (button) {
+                        //     await button[1].click();
+                        //     console.log(`Navigated to page ${currentPage}`);
+                        // } else {
+                        //     console.log("Pagination button not found!");
+                        //     break; // Exit if button is not found
+                        // }
+
+                        // Find the next button inside the shadow DOM and click it
+                        const nextButton = await page.evaluateHandle(() => {
+                            const pagination = document.querySelector("kat-pagination");
+                            return pagination?.shadowRoot?.querySelector("kat-icon[name='chevron-right']");
+                        });
+
+                        if (nextButton) {
+                            await nextButton.click();
+                            console.log("✅ Clicked next pagination button!");
+                        } else {
+                            console.error("❌ Next button not found inside kat-pagination shadow DOM!");
+                        }
+
+                        // Wait for new data to load
+                        await page.waitForTimeout(3000);
+                    }
+                }
+
+                return data
                 // const csvFilePath = await downloadReport(page, browser)
 
                 // const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
@@ -235,6 +368,46 @@ function deleteAllFiles(directory) {
             });
         });
     });
+}
+
+function parseCustomDate(dateStr) {
+    // Extract values from the string
+    const regex = /(\w+) (\d+), (\d+) at (\d+):(\d+):(\d+) (\w+) GMT([+-]\d+)/;
+    const match = dateStr.match(regex);
+
+    if (!match) {
+        throw new Error("Invalid date format");
+    }
+
+    const [_, monthStr, day, year, hour, minute, second, period, offset] = match;
+
+    // Convert month name to month index (0-based)
+    const monthIndex = new Date(`${monthStr} 1, ${year}`).getMonth();
+
+    // Convert 12-hour format to 24-hour format
+    let hour24 = parseInt(hour, 10);
+    if (period === "PM" && hour24 !== 12) hour24 += 12;
+    if (period === "AM" && hour24 === 12) hour24 = 0;
+
+    // Create a date object in local time
+    const date = new Date(Date.UTC(year, monthIndex, day, hour24 - parseInt(offset, 10), minute, second));
+
+    // Adjust time to 19:00:00 UTC
+    date.setUTCHours(19, 0, 0, 0);
+
+    return date.toISOString();
+}
+
+function isSecondDateGreater(mmddyyyy, formattedDate) {
+    // Convert mm,dd,yyyy to a Date object
+    let [mm, dd, yyyy] = mmddyyyy.split('/').map(num => parseInt(num, 10));
+    let firstDate = new Date(yyyy, mm - 1, dd); // Month is 0-based in JS Date
+
+    // Convert "March 19, 2025 at 07:17:06 PM GMT+5" to Date
+    let secondDate = new Date(formattedDate);
+
+    // Compare dates
+    return secondDate > firstDate;
 }
 
 async function parseCSVWithOffsetHeaders(filePath, headerRowIndex = 8, dataStartRowIndex = 9) {
