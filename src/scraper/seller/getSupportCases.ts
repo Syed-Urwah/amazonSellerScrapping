@@ -109,12 +109,18 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                 await page.waitForSelector('kat-data-table table');
 
                 // Extract table data
-                const tableData = await page.evaluate(() => {
+                const tableData = await page.evaluate((startDate) => {
                     const rows = document.querySelectorAll('kat-data-table table tbody tr');
                     const data: any = [];
 
-                    rows.forEach(row => {
+                    for (const row of rows) {
                         const cells: any = row.querySelectorAll('td');
+                        const creationDate = new Date(cells[0].innerText.trim());
+                
+                        if (creationDate < new Date(startDate)) {
+                            break;
+                        }
+                
                         const rowData: any = {
                             creationDate: cells[0].innerText.trim(),
                             caseId: cells[1].innerText.trim(),
@@ -123,11 +129,11 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                             shortDescription: cells[4].innerText.trim(),
                             viewCaseLink: cells[5].querySelector('a').href
                         };
+                
                         data.push(rowData);
-                    });
-
+                    }
                     return data;
-                });
+                }, startDate);
 
                 return tableData
                 // const csvFilePath = await downloadReport(page, browser)
