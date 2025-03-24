@@ -133,7 +133,7 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                                 caseId: cells[1].innerText.trim(),
                                 status: cells[2].innerText.trim(),
                                 primaryEmail: cells[3].innerText.trim(),
-                                shortDescription: cells[4].innerText.trim(),
+                                subject: cells[4].innerText.trim(),
                                 viewCaseLink: cells[5].querySelector('a')?.href || null,
                             });
                         }
@@ -172,22 +172,17 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                             await casePage.goto(row.viewCaseLink, { waitUntil: "domcontentloaded" });
                             let caseContent;
                             try {
-                                await casePage.waitForSelector("kat-expander.contact-expander", { timeout: 5000 });
-                                caseContent = await casePage.evaluate(() => {
-                                    const expander: any = document.querySelector("kat-expander.contact-expander");
-                                    return expander ? expander.innerText.trim() : "No details found";
-                                });
+                                const selector = await Promise.race([
+                                    casePage.waitForSelector("kat-expander.contact-expander", { timeout: 5000 }).then(() => "kat-expander.contact-expander"),
+                                    casePage.waitForSelector("div.button-hmd", { timeout: 5000 }).then(() => "div.button-hmd"),
+                                ]);
+                            
+                                caseContent = await casePage.evaluate((selector) => {
+                                    const element = document.querySelector(selector);
+                                    return element ? element.innerText.trim() : "No details found";
+                                }, selector);
                             } catch (error) {
-                                // If `kat-expander` is not found, check for `div.button-hmd`
-                                try {
-                                    await casePage.waitForSelector("div.button-hmd", { timeout: 5000 });
-                                    caseContent = await casePage.evaluate(() => {
-                                        const buttonDiv: any = document.querySelector("div.button-hmd");
-                                        return buttonDiv ? buttonDiv.innerText.trim() : "No details found";
-                                    });
-                                } catch (error) {
-                                    caseContent = "No details found";
-                                }
+                                caseContent = "No details found";
                             }
 
                             row.caseContent = caseContent; // Store extracted content
