@@ -53,3 +53,11 @@ functions:
       - httpApi:
           path: /scraper/seller/getSupportCases
           method: POST
+  getPaginatedSupportCases:
+    handler: src/scraper/seller/getPaginatedSupportCases.handler
+    runtime: nodejs14.x
+    timeout: 900
+    events:
+      - httpApi:
+          path: /scraper/seller/getPaginatedSupportCases
+          method: POST
