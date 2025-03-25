@@ -75,7 +75,7 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                 executablePath: chromePath,
                 userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
                 // args:[`--proxy-server=${newProxyUrl}`],
-                slowMo: 10
+                // slowMo: 10
             });
             const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
             const page: any = await browser.newPage();
@@ -170,19 +170,38 @@ async function getSupportCases(accountName, locationName, startDate, endDate) {
                             const casePage = await page.browser().newPage(); // Open a new tab
 
                             await casePage.goto(row.viewCaseLink, { waitUntil: "domcontentloaded" });
-                            let caseContent;
+                            let caseContent: any = [];
+
                             try {
-                                const selector = await Promise.race([
-                                    casePage.waitForSelector("kat-expander.contact-expander", { timeout: 5000 }).then(() => "kat-expander.contact-expander"),
-                                    casePage.waitForSelector("div.button-hmd", { timeout: 5000 }).then(() => "div.button-hmd"),
-                                ]);
-                            
-                                caseContent = await casePage.evaluate((selector) => {
-                                    const element = document.querySelector(selector);
-                                    return element ? element.innerText.trim() : "No details found";
-                                }, selector);
+                                while (true) {
+                                    // Wait for the parent div
+                                    const selector = "div#correspondence";
+                                    await casePage.waitForSelector(selector, { timeout: 5000 });
+
+                                    // Extract content from the current page
+                                    const content: any = await casePage.evaluate((selector) => {
+                                        const element = document.querySelector(selector);
+                                        return element ? element.innerText.trim() : "No details found";
+                                    }, selector);
+
+                                    caseContent.push(content);
+
+                                    // Check if the "Next Page" button is present and enabled
+                                    const isNextPageAvailable = await casePage.evaluate(() => {
+                                        const nextPageButton = document.querySelector('kat-button[type="button"]:not([disabled]) kat-icon[name="chevron-right"]');
+                                        return nextPageButton !== null;
+                                    });
+
+                                    if (!isNextPageAvailable) break; // Exit if no next page
+
+                                    // Click the next page button
+                                    await casePage.click('kat-button[type="button"]:not([disabled]) kat-icon[name="chevron-right"]');
+
+                                    // Wait for the new page to load
+                                    await casePage.waitForTimeout(2000); // Adjust delay if needed
+                                }
                             } catch (error) {
-                                caseContent = "No details found";
+                                console.error("Error scraping pages:", error);
                             }
 
                             row.caseContent = caseContent; // Store extracted content
