@@ -12,6 +12,10 @@ import path from "path";
 import { createSuccessResponse } from "../../../utils/responses";
 const csvParser = require('csv-parser');
 const fs = require('fs');
+import cloudinary from 'cloudinary';
+var UserAgent = require('user-agents');
+const randomUseragent = require('random-useragent');
+
 
 
 const tempDir = path.join(__dirname, 'temp');
@@ -22,6 +26,14 @@ const downloadPath = path.resolve(__dirname, 'downloads'); // Change to your pre
 
 const email = "amazonninja04@gmail.com"
 const password = "alphabet"
+
+cloudinary.v2.config({
+    cloud_name: 'dlsxiibfh',
+    api_key: '516884773626555',
+    api_secret: 'x7YbhERPhrgTD53KCjRMH262kT4'
+});
+
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.75 Safari/537.36';
 
 
 const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
@@ -42,14 +54,24 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
         console.log("browser start")
         try {
 
-            // browser = await chromium.puppeteer.launch({
-            //     ignoreDefaultArgs: ['--disable-extensions'],
-            //     args: chromium.args,
-            //     defaultViewport: chromium.defaultViewport,
-            //     executablePath: await chromium.executablePath,
-            //     headless: chromium.headless,
-            //     ignoreHTTPSErrors: true,
-            // });
+            //Randomize User agent or Set a valid one
+            // const userAgent = randomUseragent.getRandom();
+            // const UA = userAgent || USER_AGENT;
+
+            browser = await chromium.puppeteer.launch({
+                ignoreDefaultArgs: ['--disable-extensions'],
+                args: [
+                    ...chromium.args,
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled', // Hide automation
+                ],
+                defaultViewport: chromium.defaultViewport,
+                executablePath: await chromium.executablePath,
+                headless: chromium.headless,
+                userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
+                ignoreHTTPSErrors: true,
+            });
 
 
             // Launch the browser and open a new blank page
@@ -66,22 +88,26 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
             //   });
 
             // Launch the browser and open a new blank page
-            const browser = await puppeteer.launch({
-                headless: false,
-                executablePath: chromePath,
-                userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
-                // args:[`--proxy-server=${newProxyUrl}`],
-                slowMo: 100
-            });
-            const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
+            // const browser = await puppeteer.launch({
+            //     headless: false,
+            //     executablePath: chromePath,
+            //     userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
+            //     // args:[`--proxy-server=${newProxyUrl}`],
+            //     slowMo: 100
+            // });
+            // const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
             const page: any = await browser.newPage();
+            const userAgent = new UserAgent({ deviceCategory: 'mobile' });
 
+            await page.setUserAgent(userAgent.toString())
+            // await page.setUserAgent(UA);
+            await page.setViewport({ width: 1366, height: 768 }); 
 
-
-            await page.goto('https://sellercentral.amazon.com/payments/reports-repository/ref=xx_rrepo_dnav_xx'); 4
+            await page.goto('https://sellercentral.amazon.com/payments/reports-repository/ref=xx_rrepo_dnav_xx');
             console.log("login start")
+
             //login
-            await login(email, password, page)
+            await login(email, password, page, cloudinary)
 
             //select account
             const accountSelected = await selectAccount(accountName, locationName, page)
@@ -105,17 +131,19 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
 
                 //Creating Report
                 await createReport(page, startDate, endDate)
-               
+
                 const csvFilePath = await downloadReport(page, browser)
 
                 const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
-               
+
+                console.log("browser closing")
+                await browser.close();
+
                 return jsonData
             }
             console.log(accountSelected)
 
-            // console.log("browser closing")
-            // await browser.close();
+            
 
         } catch (error) {
             console.error(error);
@@ -274,19 +302,18 @@ async function createReport(page, startDate, endDate) {
     });
 }
 
-async function downloadReport(page,browser) {
+async function downloadReport(page, browser) {
     let downloadClicked = false;
-    let filesBefore: any = []
+    let filesBefore: any = [];
 
     // Set download behavior
     const client = await page.target().createCDPSession();
     await client.send('Page.setDownloadBehavior', {
         behavior: 'allow',
-        downloadPath: downloadPath, // Set custom download path
+        downloadPath: '/tmp', // AWS Lambda compatible path
     });
 
     while (!downloadClicked) {
-        // Click the Refresh button inside the first row
         const refreshButton = await page.$(
             "kat-table-body kat-table-row:first-child kat-button[label='Refresh']"
         );
@@ -298,18 +325,10 @@ async function downloadReport(page,browser) {
             console.log('Refresh button not found, waiting...');
         }
 
-        // Wait a few seconds before checking again
-        await page.waitForTimeout(5000); // Adjust time as needed
+        await page.waitForTimeout(5000);
 
-        // Get the list of files in the download directory BEFORE downloading
-        // Ensure the directory exists before scanning it
-        if (!fs.existsSync(downloadPath)) {
-            fs.mkdirSync(downloadPath, { recursive: true });
-        }
-        await deleteAllFiles(downloadPath)
-        filesBefore = new Set(fs.readdirSync(downloadPath));
+        filesBefore = new Set(fs.readdirSync('/tmp'));
 
-        // Check if the Download CSV button is available
         const downloadButton = await page.$(
             "kat-table-body kat-table-row:first-child kat-button[label='Download CSV']"
         );
@@ -317,7 +336,7 @@ async function downloadReport(page,browser) {
         if (downloadButton) {
             console.log('Download CSV button found, clicking...');
             await downloadButton.click();
-            downloadClicked = true; // Stop loop after clicking
+            downloadClicked = true;
         } else {
             console.log('Download CSV button not found, refreshing again...');
         }
@@ -325,14 +344,9 @@ async function downloadReport(page,browser) {
 
     console.log('Download process completed.');
 
-    // Optional: Wait for some time before closing
-    // Wait for the file to be downloaded
-    await page.waitForTimeout(10000); // Adjust if needed
+    await page.waitForTimeout(10000);
 
-    // Get the list of files in the download directory AFTER downloading
-    const filesAfter = new Set(fs.readdirSync(downloadPath));
-
-    // Find the new file
+    const filesAfter = new Set(fs.readdirSync('/tmp'));
     const newFiles = [...filesAfter].filter(file => !filesBefore.has(file));
 
     if (newFiles.length === 0) {
@@ -341,19 +355,29 @@ async function downloadReport(page,browser) {
         return;
     }
 
-    // Assuming the first detected new file is the correct one
     const csvFile: any = newFiles[0];
-    const csvFilePath = path.join(downloadPath, csvFile);
+    const csvFilePath = path.join('/tmp', csvFile);
+    console.log(`Downloaded file detected: ${csvFilePath}`);
 
-    console.log(`Downloaded file detected: ${csvFile}`);
+    return csvFilePath
 
-    // Process the CSV file
-    // let jsonData: any = [];
-    let rowIndex = 0;
-    let headers: any = [];
+    // **Upload to Cloudinary**
+    try {
+        const uploadResponse = await cloudinary.v2.uploader.upload(csvFilePath, {
+            resource_type: 'raw', // Ensures it's uploaded as a non-image file
+            folder: 'csv_reports', // Cloudinary folder
+        });
 
-    // const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
-    return csvFilePath;
+        console.log('File uploaded to Cloudinary:', uploadResponse.secure_url);
+
+        // **Optional: Delete local file after upload**
+        fs.unlinkSync(csvFilePath);
+
+        return uploadResponse.secure_url;
+    } catch (error) {
+        console.error('Cloudinary Upload Error:', error);
+        return null;
+    }
 }
 
 

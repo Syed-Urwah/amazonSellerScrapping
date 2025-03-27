@@ -8,12 +8,21 @@ import { login } from './login'
 const { authenticator } = require('otplib');
 const chromium = require('chrome-aws-lambda');
 import puppeteer from "puppeteer-core";
+import puppeteerExtra from "puppeteer-extra";
 import path from "path";
 import { createSuccessResponse } from "../../../utils/responses";
 const csvParser = require('csv-parser');
 const fs = require('fs');
 import { parse, isAfter, formatISO, format, isEqual } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
+import cloudinary from 'cloudinary';
+var UserAgent = require('user-agents');
+const randomUseragent = require('random-useragent');
+
+
+// const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+
 
 
 
@@ -27,6 +36,13 @@ const downloadPath = path.resolve(__dirname, 'downloads'); // Change to your pre
 const email = "amazonninja04@gmail.com"
 const password = "alphabet"
 
+cloudinary.v2.config({
+    cloud_name: 'dlsxiibfh',
+    api_key: '516884773626555',
+    api_secret: 'x7YbhERPhrgTD53KCjRMH262kT4'
+});
+
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.75 Safari/537.36';
 
 const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
     const { account_name, location_name, page_no, search } = JSON.parse(event.body || '');
@@ -46,14 +62,25 @@ async function getSupportCases(accountName, locationName, pageNo, search) {
         console.log("browser start")
         try {
 
-            // browser = await chromium.puppeteer.launch({
-            //     ignoreDefaultArgs: ['--disable-extensions'],
-            //     args: chromium.args,
-            //     defaultViewport: chromium.defaultViewport,
-            //     executablePath: await chromium.executablePath,
-            //     headless: chromium.headless,
-            //     ignoreHTTPSErrors: true,
-            // });
+            // chromium.puppeteer.use(StealthPlugin());
+            //Randomize User agent or Set a valid one
+            // const userAgent = randomUseragent.getRandom();
+            // const UA = userAgent || USER_AGENT;
+
+            browser = await chromium.puppeteer.launch({
+                ignoreDefaultArgs: ['--disable-extensions'],
+                args: [
+                    ...chromium.args,
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled', // Hide automation
+                ],
+                defaultViewport: chromium.defaultViewport,
+                executablePath: await chromium.executablePath,
+                headless: chromium.headless,
+                userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
+                ignoreHTTPSErrors: true,
+            });
 
 
             // Launch the browser and open a new blank page
@@ -70,22 +97,33 @@ async function getSupportCases(accountName, locationName, pageNo, search) {
             //   });
 
             // Launch the browser and open a new blank page
-            const browser = await puppeteer.launch({
-                headless: false,
-                executablePath: chromePath,
-                userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
-                // args:[`--proxy-server=${newProxyUrl}`],
-                // slowMo: 10
-            });
-            const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
+            // const browser = await puppeteer.launch({
+            //     headless: false,
+            //     executablePath: chromePath,
+            //     userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
+            //     // args:[`--proxy-server=${newProxyUrl}`],
+            //     // slowMo: 10
+            // });
+            // const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
             const page: any = await browser.newPage();
+
+            const userAgent = new UserAgent({ deviceCategory: 'mobile' });
+
+            await page.setUserAgent(userAgent.toString())
+            // await page.setUserAgent(UA);
+            await page.setViewport({ width: 1366, height: 768 });
+
+
+
 
 
 
             await page.goto('https://sellercentral.amazon.com/cu/case-lobby?ref_=xx_case_dnav_xx');
+                      
             console.log("login start")
             //login
-            await login(email, password, page)
+            await login(email, password, page, cloudinary)
+            console.log("login completed")
 
             //select account
             const accountSelected = await selectAccount(accountName, locationName, page)
@@ -231,13 +269,13 @@ async function getSupportCases(accountName, locationName, pageNo, search) {
                     data.push(row);
                 }
 
-
+                console.log("browser closing")
+                await browser.close();
                 return data
             }
             console.log(accountSelected)
 
-            console.log("browser closing")
-            await browser.close();
+            
 
         } catch (error) {
             console.error(error);

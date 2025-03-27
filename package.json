@@ -1,5 +1,5 @@
 {
-  "name": "taxcreditwiz-serverless",
+  "name": "serverless",
   "version": "1.0.0",
   "description": "Example of creating a function that runs as a cron job using the serverless `schedule` event",
   "author": "",
@@ -9,7 +9,7 @@
     "scrape_florida": "sls invoke local --function scraper_florida",
     "scraper_florida_update_client_connection": "sls invoke local --function scraper_florida_update_client_connection",
     "build": "sls package",
-    "deploy": "sls deploy",
+    "deploy": "sls deploy --aws-profile amazon-scrape",
     "db_introspect": "drizzle-kit introspect:pg"
   },
   "devDependencies": {
@@ -31,6 +31,7 @@
     "better-sqlite3": "^8.6.0",
     "cheerio": "^1.0.0-rc.12",
     "chrome-aws-lambda": "^6.0.0",
+    "cloudinary": "^2.6.0",
     "csv-parser": "^3.2.0",
     "csv-writer": "^1.6.0",
     "date-fns": "^4.1.0",
@@ -44,7 +45,11 @@
     "pg": "^8.11.3",
     "proxy-chain": "^2.5.3",
     "puppeteer-core": "^6.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "random-useragent": "^0.5.0",
     "spatialite": "^0.1.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "user-agents": "^1.1.490"
   }
 }
