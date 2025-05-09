@@ -16,7 +16,7 @@ package:
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs14.x
   deploymentMethod: direct
   region: us-east-1
   environment:
@@ -30,6 +30,10 @@ custom:
       - spatialite
       - 'chrome-aws-lambda'
       - 'puppeteer-core'
+      - 'puppeteer'
+      - 'puppeteer-extra'
+      - 'puppeteer-extra-plugin-stealth'
+      - 'puppeteer-extra-plugin-recaptcha'
     bundle: true
     minify: false
 #    watch:
@@ -41,23 +45,34 @@ functions:
     handler: src/scraper/seller/getReportDocument.handler
     runtime: nodejs14.x
     timeout: 900
+    memorySize: 1024
+    layers:
+      - arn:aws:lambda:us-east-1:764866452798:layer:chrome-aws-lambda:34
     events:
       - httpApi:
           path: /scraper/seller/getReport
           method: POST
-  getSupportCases:
-    handler: src/scraper/seller/getSupportCases.handler
-    runtime: nodejs14.x
-    timeout: 900
-    events:
-      - httpApi:
-          path: /scraper/seller/getSupportCases
-          method: POST
-  getPaginatedSupportCases:
-    handler: src/scraper/seller/getPaginatedSupportCases.handler
-    runtime: nodejs14.x
-    timeout: 900
-    events:
-      - httpApi:
-          path: /scraper/seller/getPaginatedSupportCases
-          method: POST
+  # getSupportCases:
+  #   handler: src/scraper/seller/getSupportCases.handler
+  #   runtime: nodejs14.x
+  #   timeout: 900
+  #   events:
+  #     - httpApi:
+  #         path: /scraper/seller/getSupportCases
+  #         method: POST
+  # getPaginatedSupportCases:
+  #   handler: src/scraper/seller/getPaginatedSupportCases.handler
+  #   runtime: nodejs14.x
+  #   timeout: 900
+  #   events:
+  #     - httpApi:
+  #         path: /scraper/seller/getPaginatedSupportCases
+  #         method: POST
+  # revSellerReport:
+    # handler: src/scraper/rev_seller/test.handler
+    # runtime: nodejs14.x
+    # timeout: 900
+    # events:
+    #   - httpApi:
+    #       path: /scraper/rev_seller/test
+    #       method: POST

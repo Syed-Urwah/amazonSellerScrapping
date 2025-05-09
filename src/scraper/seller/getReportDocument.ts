@@ -15,6 +15,7 @@ const fs = require('fs');
 import cloudinary from 'cloudinary';
 var UserAgent = require('user-agents');
 const randomUseragent = require('random-useragent');
+const bigJson = require('big-json');
 
 
 
@@ -41,7 +42,24 @@ const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => 
 
     const data = await getReportDocument(account_name, location_name, start_date, end_date);
     console.log(data[0])
-    return createSuccessResponse(200, "success", data)
+    const stringifyStream = bigJson.createStringifyStream({
+        body: data,
+    });
+    // Capture stream output into a single string
+    const chunks: Buffer[] = [];
+    for await (const chunk of stringifyStream) {
+      chunks.push(Buffer.from(chunk));
+    }
+
+    const jsonString = Buffer.concat(chunks).toString();
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: jsonString,
+    };
 };
 
 
@@ -58,7 +76,7 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
             // const userAgent = randomUseragent.getRandom();
             // const UA = userAgent || USER_AGENT;
 
-            browser = await chromium.puppeteer.launch({
+            const browser = await puppeteer.launch({
                 ignoreDefaultArgs: ['--disable-extensions'],
                 args: [
                     ...chromium.args,
@@ -67,11 +85,24 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
                     '--disable-blink-features=AutomationControlled', // Hide automation
                 ],
                 defaultViewport: chromium.defaultViewport,
-                executablePath: await chromium.executablePath,
+                executablePath: await chromium.executablePath || '/usr/bin/chromium-browser',
                 headless: chromium.headless,
-                userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
-                ignoreHTTPSErrors: true,
-            });
+              });
+
+            // browser = await chromium.puppeteer.launch({
+            //     ignoreDefaultArgs: ['--disable-extensions'],
+            //     args: [
+            //         ...chromium.args,
+            //         '--no-sandbox',
+            //         '--disable-setuid-sandbox',
+            //         '--disable-blink-features=AutomationControlled', // Hide automation
+            //     ],
+            //     defaultViewport: chromium.defaultViewport,
+            //     executablePath: await chromium.executablePath,
+            //     headless: chromium.headless,
+            //     userDataDir: `/tmp/random-profile-${Date.now()}`, // New session every time
+            //     ignoreHTTPSErrors: true,
+            // });
 
 
             // Launch the browser and open a new blank page
@@ -95,7 +126,7 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
             //     // args:[`--proxy-server=${newProxyUrl}`],
             //     slowMo: 100
             // });
-            // const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
+            const context = await browser.createIncognitoBrowserContext(); // Create a new incognito session
             const page: any = await browser.newPage();
             const userAgent = new UserAgent({ deviceCategory: 'mobile' });
 
@@ -306,6 +337,7 @@ async function downloadReport(page, browser) {
     let downloadClicked = false;
     let filesBefore: any = [];
 
+    const downloadPath = path.resolve('./src/downloads');
     // Set download behavior
     const client = await page.target().createCDPSession();
     await client.send('Page.setDownloadBehavior', {
@@ -358,6 +390,16 @@ async function downloadReport(page, browser) {
     const csvFile: any = newFiles[0];
     const csvFilePath = path.join('/tmp', csvFile);
     console.log(`Downloaded file detected: ${csvFilePath}`);
+
+
+    // const result = await cloudinary.v2.uploader.upload(csvFilePath, {
+    //     folder: "reports",
+    //     use_filename: true,
+    //     unique_filename: false
+    // });
+
+    // console.log("report uploaded to Cloudinary:", result.secure_url);
+
 
     return csvFilePath
 

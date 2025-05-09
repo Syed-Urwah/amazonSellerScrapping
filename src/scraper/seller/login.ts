@@ -54,7 +54,7 @@ export const login = async (email: string, password: string, page: any, cloudina
     page.click('#signInSubmit') // Clicking the link will indirectly cause a navigation
     console.log("signIn")
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
 
     await page.type('#auth-mfa-otpcode', token);
