@@ -16,6 +16,9 @@ import cloudinary from 'cloudinary';
 var UserAgent = require('user-agents');
 const randomUseragent = require('random-useragent');
 const bigJson = require('big-json');
+import { Readable } from 'stream';
+import { createGzip } from 'zlib';
+import { pipeline } from 'stream/promises';
 
 
 
@@ -37,30 +40,72 @@ cloudinary.v2.config({
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.75 Safari/537.36';
 
 
-const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
-    const { account_name, location_name, start_date, end_date } = JSON.parse(event.body || '');
-
-    const data = await getReportDocument(account_name, location_name, start_date, end_date);
-    console.log(data[0])
-    const stringifyStream = bigJson.createStringifyStream({
-        body: data,
-    });
-    // Capture stream output into a single string
+function gzipBuffer(buffer: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const gzip = createGzip();
     const chunks: Buffer[] = [];
-    for await (const chunk of stringifyStream) {
-      chunks.push(Buffer.from(chunk));
-    }
 
-    const jsonString = Buffer.concat(chunks).toString();
+    gzip.on("data", (chunk) => chunks.push(chunk));
+    gzip.on("end", () => resolve(Buffer.concat(chunks)));
+    gzip.on("error", reject);
+
+    gzip.end(buffer);
+  });
+}
+
+function uploadToCloudinary(buffer: Buffer, part: number): Promise<any> {
+  const stream = Readable.from(buffer);
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.v2.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        public_id: `reports/report-part-${part}-${Date.now()}.gz`,
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    stream.pipe(uploadStream);
+  });
+}
+
+const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
+  try {
+    const { account_name, location_name, start_date, end_date } = JSON.parse(event.body || "{}");
+    const data = await getReportDocument(account_name, location_name, start_date, end_date);
+
+    // Split data into 2 parts
+    const half = Math.ceil(data.length / 2);
+    const part1 = data.slice(0, half);
+    const part2 = data.slice(half);
+
+    const part1Gz = await gzipBuffer(Buffer.from(JSON.stringify(part1)));
+    const part2Gz = await gzipBuffer(Buffer.from(JSON.stringify(part2)));
+
+    const [upload1, upload2] = await Promise.all([
+      uploadToCloudinary(part1Gz, 1),
+      uploadToCloudinary(part2Gz, 2),
+    ]);
 
     return {
       statusCode: 200,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: jsonString,
+      body: JSON.stringify({
+        message: "Report uploaded in two parts",
+        part1Url: upload1.secure_url,
+        part2Url: upload2.secure_url,
+      }),
     };
+  } catch (error: any) {
+    console.error("Error uploading large file in parts:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
+    };
+  }
 };
+
 
 
 async function getReportDocument(accountName, locationName, startDate, endDate) {
