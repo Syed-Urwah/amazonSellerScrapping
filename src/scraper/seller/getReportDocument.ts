@@ -73,30 +73,37 @@ function uploadToCloudinary(buffer: Buffer, part: number): Promise<any> {
 
 const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => {
   try {
-    const { account_name, location_name, start_date, end_date } = JSON.parse(event.body || "{}");
-    const data = await getReportDocument(account_name, location_name, start_date, end_date);
+    const { account_name, location_name, start_date, end_date, type } = JSON.parse(event.body || "{}");
+    const data: any = await getReportDocument(account_name, location_name, start_date, end_date, type);
 
-    // Split data into 2 parts
-    const half = Math.ceil(data.length / 2);
-    const part1 = data.slice(0, half);
-    const part2 = data.slice(half);
 
-    const part1Gz = await gzipBuffer(Buffer.from(JSON.stringify(part1)));
-    const part2Gz = await gzipBuffer(Buffer.from(JSON.stringify(part2)));
+    if(data?.length > 0){
+        // Split data into 2 parts
+        const half = Math.ceil(data.length / 2);
+        const part1 = data.slice(0, half);
+        const part2 = data.slice(half);
 
-    const [upload1, upload2] = await Promise.all([
-      uploadToCloudinary(part1Gz, 1),
-      uploadToCloudinary(part2Gz, 2),
-    ]);
+        const part1Gz = await gzipBuffer(Buffer.from(JSON.stringify(part1)));
+        const part2Gz = await gzipBuffer(Buffer.from(JSON.stringify(part2)));
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        message: "Report uploaded in two parts",
-        part1Url: upload1.secure_url,
-        part2Url: upload2.secure_url,
-      }),
-    };
+        const [upload1, upload2] = await Promise.all([
+        uploadToCloudinary(part1Gz, 1),
+        uploadToCloudinary(part2Gz, 2),
+        ]);
+
+        return {
+        statusCode: 200,
+        body: JSON.stringify({
+            message: "Report uploaded in two parts",
+            part1Url: upload1.secure_url,
+            part2Url: upload2.secure_url,
+        }),
+        };
+    }else{
+        return createSuccessResponse(200, "success", {})
+    }
+
+    
   } catch (error: any) {
     console.error("Error uploading large file in parts:", error);
     return {
@@ -108,7 +115,7 @@ const handler: Handler = async (event: APIGatewayProxyEventV2): Promise<any> => 
 
 
 
-async function getReportDocument(accountName, locationName, startDate, endDate) {
+async function getReportDocument(accountName, locationName, startDate, endDate, type) {
     try {
 
 
@@ -205,12 +212,19 @@ async function getReportDocument(accountName, locationName, startDate, endDate) 
                     console.log("Skip button not found");
                 }
 
-                //Creating Report
-                await createReport(page, startDate, endDate)
+                let jsonData = []
 
-                const csvFilePath = await downloadReport(page, browser)
+                if(type == "create"){
+                    //Creating Report
+                    await createReport(page, startDate, endDate)
+                }else{
+                    const csvFilePath = await downloadReport(page, browser)
 
-                const jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
+                    jsonData = await parseCSVWithOffsetHeaders(csvFilePath)
+                }
+                
+
+                
 
                 console.log("browser closing")
                 await browser.close();
